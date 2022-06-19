@@ -1,0 +1,147 @@
+import RPi.GPIO as GPIO
+import time
+import cv2
+import numpy as np
+
+
+cap = cv2.VideoCapture(0)
+GPIO.setmode(GPIO.BCM)
+GPIO.setup(21,GPIO.OUT)
+GPIO.setup(26,GPIO.OUT)
+GPIO.setup(5,GPIO.OUT)
+GPIO.setup(6,GPIO.OUT)
+GPIO.setup(16,GPIO.OUT)
+GPIO.setup(12,GPIO.OUT)
+x_bias = 130
+rad_bias = 30
+x_now = 0
+x_mid= 320
+rad_now = 0
+rad_mid = 70
+control_flag = 0
+p1 = GPIO.PWM(26, 50)
+p2 = GPIO.PWM(21, 50)
+p1.start(0)
+p2.start(0)
+def Car_Forward():
+    p1.start(75)
+    p2.start(75)
+    GPIO.output(16,GPIO.HIGH)
+    GPIO.output(12,GPIO.LOW)
+    GPIO.output(5, GPIO.HIGH)
+    GPIO.output(6, GPIO.LOW)
+def Car_Backward():
+    p1.start(75)
+    p2.start(75)
+    GPIO.output(16,GPIO.LOW)
+    GPIO.output(12,GPIO.HIGH)
+    GPIO.output(5, GPIO.LOW)
+    GPIO.output(6, GPIO.HIGH)
+def Car_Leftward():
+    p1.start(50)
+     p2.start(50)
+    GPIO.output(16,GPIO.HIGH)
+    GPIO.output(12,GPIO.LOW)
+    GPIO.output(5, GPIO.LOW)
+    GPIO.output(6, GPIO.HIGH)
+def Car_Rightward():
+    p1.start(65)
+    p2.start(65)
+    GPIO.output(16,GPIO.LOW)
+    GPIO.output(12,GPIO.HIGH)
+    GPIO.output(5, GPIO.HIGH)
+    GPIO.output(6, GPIO.LOW)
+def Car_Stop():
+    p1.start(0)
+    p2.start(0)
+    GPIO.output(16,GPIO.LOW)
+    GPIO.output(12,GPIO.LOW)
+    GPIO.output(5, GPIO.LOW)
+    GPIO.output(6, GPIO.LOW)
+def setup():
+    GPIO.setup(16, GPIO.OUT)
+    GPIO.setup(12, GPIO.OUT)
+    GPIO.setup(5, GPIO.OUT)
+    GPIO.setup(6, GPIO.OUT)
+    Car_Stop()
+def run():
+    global x_bias
+    global rad_bias
+    global x_now
+    global y_now
+    global rad_now
+    global control_flag
+    while True:
+        _, frame = cap.read()
+        cv2.resizeWindow("frame",640,480)
+        ########################image processing###########################
+        Gaussian = cv2.GaussianBlur(frame, (5, 5), 0)
+        hsvspace = cv2.cvtColor(Gaussian, cv2.COLOR_BGR2HSV)
+        green_lower = np.array([35, 43, 35])
+        green_upper = np.array([90, 255, 255])
+
+        whiteandblack = cv2.inRange(hsvspace, green_lower, green_upper)
+        kernal = np.ones((3,3))
+        smoothresult = cv2.erode(whiteandblack, kernal, iterations=2)
+        contour = cv2.findContours(smoothresult.copy(), cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)[-2]
+        if len(contour) > 0:
+            area = max(contour, key=cv2.contourArea)
+            (x, y), rad = cv2.minEnclosingCircle(area)
+            if int(rad) > 20:
+                control_flag = 1
+                x_now = x
+                rad_now = rad
+                print(int(x_now), int(y), int(rad_now))
+############################control##################################
+                if control_flag == 1:
+                    if x_now - x_mid > x_bias:
+                        print('Rightward!')
+                        Car_Rightward()
+                        time.sleep(0.05)
+                        Car_Stop()
+                    elif x_mid - x_now > x_bias:
+                        print('Leftward!')
+                        Car_Leftward()
+                        time.sleep(0.05)
+                        Car_Stop()
+                    elif rad_now - rad_mid > rad_bias:
+                        print('Backward!')
+                        Car_Backward()
+                    elif rad_mid - rad_now > rad_bias:
+                        print('Forward!')
+                        Car_Forward()
+                    else:
+                        print('Stop!')
+                        Car_Stop()
+            else:
+                control_flag = 0
+                print('Nothing dect!')
+                Car_Stop()
+        else:
+            pass
+        ####################For Testing########################################
+        #cv2.imshow('frame', frame)
+        #cv2.imshow('Gaussian',Gaussian)
+        #cv2.imshow('whiteandblack',whiteandblack)
+        #cv2.imshow('smoothresult',smoothresult)
+        ####################Quit#######################################
+        if cv2.waitKey(5) & 0xFF == 27: #ESC
+break
+######################shut down everything, close windows#########################
+def destroy():
+    Car_Stop()
+    p1.stop()
+    p2.stop()
+    GPIO.cleanup()
+    cap.release()
+    cv2.destroyAllWindows()
+if __name__ == '__main__':
+    setup()
+    print('System Start!')
+    try:
+        run()
+    except KeyboardInterrupt:
+            destroy()
+            p1.stop()
+            p2.stop()
+            GPIO.cleanup()
